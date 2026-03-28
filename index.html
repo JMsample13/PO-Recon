@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PO Comparator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:#0d0f14;--surface:#161923;--border:#252a35;
+    --accent:#00e5c0;--warn:#ffd166;--muted:#4a5568;
+    --text:#e8edf5;--text2:#8892a4;
+    --match:#00c896;--diff:#ff6b35;--only-b:#6c9bff;
+    --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,192,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,192,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .wrap{position:relative;z-index:1;max-width:1300px;margin:0 auto;padding:0 24px 60px;}
+
+  header{border-bottom:1px solid var(--border);padding:20px 0;display:flex;align-items:center;justify-content:space-between;}
+  .logo{font-family:var(--mono);font-weight:700;font-size:1.15rem;color:var(--accent);}
+  .logo em{color:var(--text2);font-style:normal;}
+  .badge{font-family:var(--mono);font-size:.65rem;color:var(--accent);border:1px solid var(--accent);padding:3px 10px;border-radius:2px;letter-spacing:2px;}
+
+  .card{background:var(--surface);border:1px solid var(--border);padding:28px 32px;margin-top:32px;}
+  .card-title{font-family:var(--mono);font-size:.68rem;letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:22px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+
+  .field{display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center;margin-bottom:14px;}
+  .field-label{font-family:var(--mono);font-size:.7rem;letter-spacing:1px;text-transform:uppercase;color:var(--text2);}
+  .field-hint{font-family:var(--mono);font-size:.65rem;color:var(--muted);grid-column:2;margin-top:-8px;margin-bottom:6px;}
+  input.fi{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 13px;font-family:var(--mono);font-size:.78rem;border-radius:2px;width:100%;transition:border-color .2s;}
+  input.fi:focus{outline:none;border-color:var(--accent);}
+  input.fi::placeholder{color:var(--muted);}
+
+  .run-btn{display:block;width:100%;margin-top:20px;padding:15px;background:var(--accent);color:var(--bg);border:none;font-family:var(--mono);font-size:.88rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:all .2s;}
+  .run-btn:hover{background:#00fff2;box-shadow:0 0 30px rgba(0,229,192,.3);}
+  .run-btn:disabled{background:var(--muted);cursor:not-allowed;opacity:.5;}
+
+  .sbar{display:none;margin-top:14px;padding:11px 15px;font-family:var(--mono);font-size:.76rem;border-radius:2px;}
+  .sbar.loading{background:rgba(0,229,192,.07);border:1px solid rgba(0,229,192,.2);color:var(--accent);}
+  .sbar.error{background:rgba(255,107,53,.07);border:1px solid rgba(255,107,53,.2);color:var(--diff);}
+  .sbar.ok{background:rgba(0,200,150,.07);border:1px solid rgba(0,200,150,.2);color:var(--match);}
+
+  .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:28px;}
+  .meta-card{background:var(--surface);border:1px solid var(--border);padding:16px 20px;}
+  .meta-card h3{font-family:var(--mono);font-size:.62rem;letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:10px;}
+  .mrow{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+  .mkey{font-family:var(--mono);font-size:.68rem;color:var(--text2);text-transform:uppercase;}
+  .mval{font-family:var(--mono);font-size:.74rem;color:var(--text);}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:28px 0;}
+  .sc{background:var(--surface);border:1px solid var(--border);padding:18px;position:relative;overflow:hidden;}
+  .sc::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+  .sc.m::after{background:var(--match);}  .sc.m .sn{color:var(--match);}
+  .sc.d::after{background:var(--diff);}   .sc.d .sn{color:var(--diff);}
+  .sc.a::after{background:var(--warn);}   .sc.a .sn{color:var(--warn);}
+  .sc.b::after{background:var(--only-b);} .sc.b .sn{color:var(--only-b);}
+  .sn{font-family:var(--mono);font-size:2rem;font-weight:700;line-height:1;margin-bottom:5px;}
+  .sl{font-size:.7rem;color:var(--text2);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;}
+
+  .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:22px;}
+  .tab{font-family:var(--mono);font-size:.7rem;letter-spacing:2px;text-transform:uppercase;padding:11px 18px;border:none;background:transparent;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab:hover:not(.active){color:var(--text);}
+  .tp{display:none;} .tp.active{display:block;}
+
+  .ow{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:.8rem;}
+  th{font-family:var(--mono);font-size:.63rem;letter-spacing:2px;text-transform:uppercase;color:var(--text2);padding:9px 13px;text-align:left;border-bottom:1px solid var(--border);background:var(--surface);white-space:nowrap;}
+  td{padding:9px 13px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+  tr:hover td{background:rgba(255,255,255,.02);}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:.6rem;letter-spacing:1.5px;text-transform:uppercase;padding:2px 7px;border-radius:2px;white-space:nowrap;}
+  .pm{background:rgba(0,200,150,.13);color:var(--match);border:1px solid rgba(0,200,150,.28);}
+  .pd{background:rgba(255,107,53,.13);color:var(--diff);border:1px solid rgba(255,107,53,.28);}
+  .pa{background:rgba(255,209,102,.13);color:var(--warn);border:1px solid rgba(255,209,102,.28);}
+  .pb{background:rgba(108,155,255,.13);color:var(--only-b);border:1px solid rgba(108,155,255,.28);}
+
+  .mono{font-family:var(--mono);}
+  .ca{color:var(--warn);} .cb{color:var(--only-b);} .cm{color:var(--match);}
+
+  .stitle{font-family:var(--mono);font-size:.68rem;letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+  .stitle::after{content:'';flex:1;height:1px;background:var(--border);}
+
+  .empty{text-align:center;padding:50px 20px;color:var(--text2);font-family:var(--mono);font-size:.82rem;border:1px dashed var(--border);}
+
+  .xbar{display:flex;gap:10px;margin-top:28px;padding-top:22px;border-top:1px solid var(--border);}
+  .xbtn{font-family:var(--mono);font-size:.7rem;letter-spacing:2px;text-transform:uppercase;padding:9px 18px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;transition:all .15s;border-radius:2px;}
+  .xbtn:hover{border-color:var(--accent);color:var(--accent);}
+  .xbtn.p{border-color:var(--accent);color:var(--accent);background:rgba(0,229,192,.07);}
+
+  #results{margin-top:36px;display:none;}
+  @media(max-width:700px){.stats{grid-template-columns:1fr 1fr;}.meta-grid{grid-template-columns:1fr;}.field{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">PO<em>/</em>COMPARATOR <em style="font-size:.72rem;margin-left:8px;">× Google Sheets Live</em></div>
+    <div class="badge">GAS CONNECTED</div>
+  </header>
+
+  <div class="card" style="padding:16px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="card-title" style="margin:0;padding:0;border:none;">⚡ Auto-connected to Google Sheets</div>
+      <button class="xbtn p" onclick="fetchAndCompare()" style="margin:0;">↺ Refresh</button>
+    </div>
+    <div class="sbar" id="sbar"></div>
+  </div>
+
+  <div id="results">
+    <div class="meta-grid" id="metaGrid" style="display:none;">
+      <div class="meta-card" id="metaPO"><h3>Purchase Order</h3></div>
+      <div class="meta-card" id="metaBill"><h3>Vendor Bill</h3></div>
+    </div>
+
+    <div class="stats">
+      <div class="sc m"><div class="sn" id="sM">0</div><div class="sl">Matching</div></div>
+      <div class="sc d"><div class="sn" id="sD">0</div><div class="sl">Differences</div></div>
+      <div class="sc a"><div class="sn" id="sA">0</div><div class="sl">Only in PO</div></div>
+      <div class="sc b"><div class="sn" id="sB">0</div><div class="sl">Only in Bill</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('all',this)">All Items</button>
+      <button class="tab" onclick="showTab('diffs',this)">Differences Only</button>
+      <button class="tab" onclick="showTab('price',this)">Pricing / Qty</button>
+    </div>
+    <div id="tab-all"   class="tp active"></div>
+    <div id="tab-diffs" class="tp"></div>
+    <div id="tab-price" class="tp"></div>
+
+    <div class="xbar">
+      <button class="xbtn p" onclick="exportXLSX()">⬇ XLSX (All)</button>
+      <button class="xbtn p" onclick="exportXLSXDiff()">⬇ XLSX (Discrepancies Only)</button>
+      <button class="xbtn" onclick="exportCSV()">⬇ CSV</button>
+      <button class="xbtn" onclick="fetchAndCompare()">↺ Refresh</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _res=[], _hdrs=[], _key='Item Code';
+
+function status(type,msg){const e=document.getElementById('sbar');e.style.display='block';e.className='sbar '+type;e.textContent=msg;}
+
+// Auto-load on page ready
+window.addEventListener('DOMContentLoaded', fetchAndCompare);
+
+const GAS_URL='https://script.google.com/macros/s/AKfycbzGFp8VKr79igLfCyiI6Myxjg9PX2Wr9LerSeRw4ZV8EI5lMLgseEk1sf5XiruTk9T3/exec';
+
+function fetchAndCompare(){
+  _key='Item Code';
+  status('loading','⟳ Loading data from Google Sheets…');
+  const cbName='poCallback_'+Date.now();
+  const existing=document.getElementById('jsonp-script');
+  if(existing)existing.remove();
+  window[cbName]=function(j){
+    delete window[cbName];
+    if(j.status==='error'){status('error','✖ '+j.message);return;}
+    status('ok','✔ Loaded — PO: '+j.po.rows.length+' rows · Bill: '+j.bill.rows.length+' rows');
+    renderMeta(j.po.meta,j.bill.meta);
+    compare(j.po,j.bill);
+    document.getElementById('results').style.display='block';
+    document.getElementById('results').scrollIntoView({behavior:'smooth'});
+  };
+  const script=document.createElement('script');
+  script.id='jsonp-script';
+  script.src=GAS_URL+'?action=both&callback='+cbName;
+  script.onerror=()=>status('error','✖ Could not reach Apps Script. Make sure deployment access is set to "Anyone".');
+  document.head.appendChild(script);
+}
+
+function renderMeta(mpo,mbill){
+  const fields=[['Vendor','vendor'],['PO Number','poNumber'],['Bill Number','billNumber'],['Delivery Date','deliveryDate']];
+  [['metaPO','Purchase Order',mpo],['metaBill','Vendor Bill',mbill]].forEach(([id,title,m])=>{
+    const el=document.getElementById(id);
+    el.innerHTML=`<h3>${title}</h3>`;
+    fields.forEach(([lbl,k])=>{if(m[k])el.innerHTML+=`<div class="mrow"><span class="mkey">${lbl}</span><span class="mval">${m[k]}</span></div>`;});
+  });
+  document.getElementById('metaGrid').style.display='grid';
+}
+
+function compare(poData,billData){
+  const mapA=new Map(poData.rows.map(r=>[String(r[_key]||'').trim(),r]));
+  const mapB=new Map(billData.rows.map(r=>[String(r[_key]||'').trim(),r]));
+  const keys=[...new Set([...mapA.keys(),...mapB.keys()])].filter(k=>k);
+  const hSet=new Set([...(poData.headers||[]),...(billData.headers||[])]);
+  hSet.delete(_key);
+  _hdrs=[_key,...[...hSet]];
+  _res=keys.map(k=>{
+    const a=mapA.get(k),b=mapB.get(k);
+    if(!a)return{key:k,status:'only-b',a:null,b};
+    if(!b)return{key:k,status:'only-a',a,b:null};
+    const diffs=[];
+    hSet.forEach(h=>{const va=String(a[h]??'').trim(),vb=String(b[h]??'').trim();if(va!==vb)diffs.push({col:h,va,vb});});
+    return{key:k,status:diffs.length?'diff':'match',a,b,diffs};
+  });
+  document.getElementById('sM').textContent=_res.filter(r=>r.status==='match').length;
+  document.getElementById('sD').textContent=_res.filter(r=>r.status==='diff').length;
+  document.getElementById('sA').textContent=_res.filter(r=>r.status==='only-a').length;
+  document.getElementById('sB').textContent=_res.filter(r=>r.status==='only-b').length;
+  buildTable('tab-all',_res);
+  buildTable('tab-diffs',_res.filter(r=>r.status!=='match'));
+  buildPricing();
+}
+
+function showTab(name,btn){
+  document.querySelectorAll('.tp').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function pillHtml(s){
+  const m={match:['pm','Match'],diff:['pd','Diff'],'only-a':['pa','Only PO'],'only-b':['pb','Only Bill']};
+  return `<span class="pill ${m[s][0]}">${m[s][1]}</span>`;
+}
+
+function buildTable(id,rows){
+  const cols=_hdrs.filter(h=>h!==_key).slice(0,5);
+  if(!rows.length){document.getElementById(id).innerHTML='<div class="empty">No items to display.</div>';return;}
+  let h=`<div class="stitle">Items</div><div class="ow"><table><thead><tr><th>${_key}</th><th>Status</th>`;
+  cols.forEach(c=>h+=`<th>${c}</th>`);
+  h+='</tr></thead><tbody>';
+  rows.forEach(r=>{
+    h+=`<tr><td class="mono">${r.key}</td><td>${pillHtml(r.status)}</td>`;
+    cols.forEach(c=>{
+      const va=r.a?String(r.a[c]??''):'—',vb=r.b?String(r.b[c]??''):'—';
+      if(r.status==='match')h+=`<td class="mono cm">${va}</td>`;
+      else if(r.status==='only-a')h+=`<td class="mono ca">${va}</td>`;
+      else if(r.status==='only-b')h+=`<td class="mono cb">${vb}</td>`;
+      else h+=`<td class="mono">${va!==vb?`<span class="ca">${va}</span> → <span class="cb">${vb}</span>`:`<span class="cm">${va}</span>`}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  document.getElementById(id).innerHTML=h;
+}
+
+function buildPricing(){
+  const pc=_hdrs.filter(h=>{const l=h.toLowerCase();return['cost','price','amount','total','qty','quantity'].some(k=>l.includes(k));});
+  if(!pc.length){document.getElementById('tab-price').innerHTML='<div class="empty">No pricing/quantity columns detected.</div>';return;}
+  let h=`<div class="stitle">Pricing &amp; Quantity</div><div class="ow"><table><thead><tr><th>${_key}</th><th>Status</th>`;
+  pc.forEach(c=>h+=`<th>${c} PO</th><th>${c} Bill</th><th>Δ</th>`);
+  h+='</tr></thead><tbody>';
+  _res.forEach(r=>{
+    h+=`<tr><td class="mono">${r.key}</td><td>${pillHtml(r.status)}</td>`;
+    pc.forEach(c=>{
+      const va=r.a?r.a[c]:'',vb=r.b?r.b[c]:'';
+      const na=parseFloat(String(va).replace(/[^0-9.\-]/g,'')),nb=parseFloat(String(vb).replace(/[^0-9.\-]/g,''));
+      const d=(!isNaN(na)&&!isNaN(nb))?(nb-na).toFixed(2):'—';
+      const dc=d==='—'?'':parseFloat(d)>0?'cb':parseFloat(d)<0?'ca':'cm';
+      const ds=d!=='—'?(parseFloat(d)>0?'+'+d:d):d;
+      h+=`<td class="mono ca">${va||'—'}</td><td class="mono cb">${vb||'—'}</td><td class="mono ${dc}">${ds}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  document.getElementById('tab-price').innerHTML=h;
+}
+
+function cleanVal(v){
+  if(v===null||v===undefined)return '';
+  // Remove all em-dash / encoding artifacts, trim
+  return String(v).replace(/—/g,'').replace(/â€"/g,'').replace(/—/g,'').trim();
+}
+
+// Columns we care about for the structured export
+const EXPORT_GROUPS=[
+  {label:'Item Description', col:'Item Description'},
+  {label:'Quantity',         col:'Quantity'},
+  {label:'Cost',             col:'Cost'},
+  {label:'Total Amount',     col:'Total Cost', alt:'Total Amount'}
+];
+
+function resolveCol(group){
+  // find actual header in data
+  const h=_hdrs.find(h=>h===group.col||h===group.alt||h.toLowerCase().includes(group.col.toLowerCase()));
+  return h||null;
+}
+
+function buildXLSXData(filterDiff){
+  const groups=EXPORT_GROUPS.map(g=>({...g,actual:resolveCol(g)})).filter(g=>g.actual);
+
+  // Row 1: group labels (merged visually via repeated values)
+  // Row 2: sub-headers
+  const row1=['Item Code',''];
+  const row2=['','Status'];
+  groups.forEach(g=>{
+    row1.push(g.label,'','');
+    row2.push('B&R PO','Vendor Bill','Discrepancy');
+  });
+
+  const dataRows=[];
+  const statusMap={match:'Match',diff:'Diff','only-a':'Only PO','only-b':'Only Bill'};
+
+  let source=filterDiff ? _res.filter(r=>r.status!=='match') : _res;
+
+  source.forEach(r=>{
+    const row=[cleanVal(r.key), statusMap[r.status]||r.status];
+    groups.forEach(g=>{
+      if(!g.actual){row.push('','','');return;}
+      const va=cleanVal(r.a?r.a[g.actual]:'');
+      const vb=cleanVal(r.b?r.b[g.actual]:'');
+      let disc='';
+      if(va&&vb&&va!==vb){
+        const na=parseFloat(va),nb=parseFloat(vb);
+        disc=(!isNaN(na)&&!isNaN(nb))?(nb-na>0?'+':'')+(nb-na).toFixed(2):'Changed';
+      } else if(!va&&vb){
+        disc='Missing in PO';
+      } else if(va&&!vb){
+        disc='Missing in Bill';
+      }
+      row.push(va,vb,disc);
+    });
+    dataRows.push(row);
+  });
+
+  return {row1,row2,dataRows,groups};
+}
+
+function exportXLSX(){
+  if(!_res.length)return;
+  const {row1,row2,dataRows,groups}=buildXLSXData(false);
+
+  const wsData=[row1,row2,...dataRows];
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  const colWidths=[{wch:14},{wch:10}];
+  groups.forEach(()=>colWidths.push({wch:16},{wch:16},{wch:14}));
+  ws['!cols']=colWidths;
+
+  // Merge group header cells (row1): col 0 spans 1, col 1 spans 1, then every 3 cols
+  const merges=[{s:{r:0,c:0},e:{r:1,c:0}},{s:{r:0,c:1},e:{r:1,c:1}}];
+  groups.forEach((_,i)=>{
+    const startCol=2+(i*3);
+    merges.push({s:{r:0,c:startCol},e:{r:0,c:startCol+2}});
+  });
+  ws['!merges']=merges;
+
+  // Light styling: bold headers, subtle fill for discrepancy cols
+  const totalCols=2+(groups.length*3);
+  for(let c=0;c<totalCols;c++){
+    ['A','B','C','D','E','F','G','H','I','J','K','L','M'].forEach((_,ci)=>{
+      if(ci!==c)return;
+    });
+    const c1=ws[XLSX.utils.encode_cell({r:0,c})];
+    const c2=ws[XLSX.utils.encode_cell({r:1,c})];
+    const hStyle={font:{bold:true},fill:{fgColor:{rgb:'D9E1F2'}},alignment:{horizontal:'center'}};
+    if(c1)c1.s=hStyle;
+    if(c2)c2.s={...hStyle,fill:{fgColor:{rgb:'E9EDF7'}}};
+  }
+
+  // Mark discrepancy cells (every 3rd data col, col index 4,7,10...)
+  dataRows.forEach((row,ri)=>{
+    groups.forEach((_,gi)=>{
+      const discCol=2+(gi*3)+2;
+      const cell=ws[XLSX.utils.encode_cell({r:ri+2,c:discCol})];
+      if(cell&&cell.v&&cell.v!==''){
+        cell.s={font:{bold:true,color:{rgb:'C00000'}}};
+      }
+    });
+    // Status cell
+    const statusCell=ws[XLSX.utils.encode_cell({r:ri+2,c:1})];
+    const status=row[1];
+    if(statusCell){
+      const sc={match:'375623',diff:'C00000','Only PO':'7F6000','Only Bill':'174472','Match':'375623','Diff':'C00000'};
+      statusCell.s={font:{color:{rgb:sc[status]||'000000'}}};
+    }
+  });
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'PO vs Bill');
+
+  // Summary sheet
+  const matched=_res.filter(r=>r.status==='match').length;
+  const diffs=_res.filter(r=>r.status==='diff').length;
+  const onlyPO=_res.filter(r=>r.status==='only-a').length;
+  const onlyBill=_res.filter(r=>r.status==='only-b').length;
+  const ws2=XLSX.utils.aoa_to_sheet([
+    ['PO Comparison Summary'],[''],
+    ['Metric','Count'],
+    ['Total Items',_res.length],
+    ['Matching',matched],
+    ['Differences',diffs],
+    ['Only in PO',onlyPO],
+    ['Only in Bill',onlyBill],
+    [''],['Generated',new Date().toLocaleString()]
+  ]);
+  ws2['!cols']=[{wch:18},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Summary');
+
+  XLSX.writeFile(wb,'po_comparison.xlsx');
+}
+
+function exportCSV(){
+  if(!_res.length)return;
+  const {row1,row2,dataRows}=buildXLSXData(false);
+  const bom='\uFEFF';
+  const allRows=[row1,row2,...dataRows];
+  const csv=bom+allRows.map(r=>r.map(v=>'"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download='po_comparison.csv';a.click();
+}
+function exportXLSX(){
+  if(!_res.length)return;
+  const rows=buildExportRows();
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+
+  // Column widths
+  ws['!cols']=rows[0].map((_,i)=>({wch: i===0?18:i===1?10:16}));
+
+  // Style header row bold (xlsx.full supports basic styles)
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  for(let c=range.s.c;c<=range.e.c;c++){
+    const cell=ws[XLSX.utils.encode_cell({r:0,c})];
+    if(cell) cell.s={font:{bold:true},fill:{fgColor:{rgb:'1A2332'}}};
+  }
+
+  // Color rows by status
+  _res.forEach((r,ri)=>{
+    const rowIdx=ri+1;
+    const colors={match:'C6EFCE',diff:'FFCCCC','only-a':'FFEB9C','only-b':'DDEBF7'};
+    const color=colors[r.status]||'FFFFFF';
+    for(let c=range.s.c;c<=range.e.c;c++){
+      const cell=ws[XLSX.utils.encode_cell({r:rowIdx,c})];
+      if(cell) cell.s={fill:{fgColor:{rgb:color}}};
+    }
+  });
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'PO Comparison');
+
+  // Summary sheet
+  const summary=[
+    ['PO Comparison Summary'],
+    [''],
+    ['Status','Count'],
+    ['Matching',  _res.filter(r=>r.status==='match').length],
+    ['Different', _res.filter(r=>r.status==='diff').length],
+    ['Only in PO',_res.filter(r=>r.status==='only-a').length],
+    ['Only in Bill',_res.filter(r=>r.status==='only-b').length],
+    [''],
+    ['Generated', new Date().toLocaleString()]
+  ];
+  const ws2=XLSX.utils.aoa_to_sheet(summary);
+  ws2['!cols']=[{wch:20},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Summary');
+
+  XLSX.writeFile(wb,'po_comparison.xlsx');
+}
+function exportXLSXDiff(){
+  if(!_res.length)return;
+  const {row1,row2,dataRows,groups}=buildXLSXData(true);
+  if(!dataRows.length){alert('No discrepancies found!');return;}
+  const wsData=[row1,row2,...dataRows];
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+  const colWidths=[{wch:14},{wch:10}];
+  groups.forEach(()=>colWidths.push({wch:16},{wch:16},{wch:14}));
+  ws['!cols']=colWidths;
+  const merges=[{s:{r:0,c:0},e:{r:1,c:0}},{s:{r:0,c:1},e:{r:1,c:1}}];
+  groups.forEach((_,i)=>{const sc=2+(i*3);merges.push({s:{r:0,c:sc},e:{r:0,c:sc+2}});});
+  ws['!merges']=merges;
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Discrepancies');
+  XLSX.writeFile(wb,'po_discrepancies.xlsx');
+}
+</script>
+</body>
+</html>
